@@ -128,14 +128,23 @@ for action in pair connect; do
   pass "$action preserves selected-adapter power errors"
 done
 
-for invalid in /org/bluez/hci1 /org/bluez/hci1/dev_11_22_33_44_55_66 '/org/bluez/hci1/dev_AA_BB_CC_DD_EE_FF;true'; do
+for invalid in /org/bluez/hci1 /org/bluez/hci1/dev_AA_BB_CC_DD_EE '/org/bluez/hci1/dev_AA_BB_CC_DD_EE_FF;true'; do
   : >"$ADAPTER_LOG"
   if "$ROOT/bin/omarchy-bluetooth-device" connect AA:BB:CC:DD:EE:FF "$invalid" >/dev/null 2>&1; then
-    fail "invalid or mismatched paths are rejected"
+    fail "invalid paths are rejected"
   fi
   [[ ! -s $ADAPTER_LOG ]] || fail "invalid paths never reach Bluetooth"
 done
-pass "invalid or mismatched paths never reach Bluetooth"
+pass "invalid paths never reach Bluetooth"
+
+# An LE device paired under a private address keeps its object path after its
+# Address property resolves to the identity address.
+: >"$ADAPTER_LOG"
+"$ROOT/bin/omarchy-bluetooth-device" disconnect 11:22:33:44:55:66 "$device" ||
+  fail "a device whose address changed since its path was created can still be controlled"
+grep -Fxq -- "--system --timeout=20 call org.bluez $device org.bluez.Device1 Disconnect" "$ADAPTER_LOG" ||
+  fail "a resolved LE address targets the device's own path"
+pass "a device whose address resolved after pairing is still controlled through its path"
 
 : >"$ADAPTER_LOG"
 if BUSCTL_FAIL=1 "$ROOT/bin/omarchy-bluetooth-device" connect AA:BB:CC:DD:EE:FF "$device"; then

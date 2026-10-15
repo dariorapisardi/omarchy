@@ -22,9 +22,9 @@ device_path=${3:-}
 # The panel has an adapter-qualified BlueZ object. Address-only bluetoothctl
 # commands use its default controller, which may not own the clicked device.
 if [[ -n $device_path ]]; then
+  # Not matched against the address: BlueZ keeps the path when an LE device's
+  # address resolves to its identity address after pairing.
   [[ $device_path =~ ^/org/bluez/hci[0-9]+/dev_([0-9A-F]{2}_){5}[0-9A-F]{2}$ ]] || usage
-  device_address=${address^^}
-  [[ ${device_path##*/dev_} == "${device_address//:/_}" ]] || usage
   adapter_path=${device_path%/dev_*}
 
   device_call() {
