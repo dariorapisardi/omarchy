@@ -100,6 +100,17 @@ ADAPTER_POWERED=false "$ROOT/bin/omarchy-bluetooth-device" connect aa:bb:cc:dd:e
 grep -Fxq -- "--system set-property org.bluez /org/bluez/hci1 org.bluez.Adapter1 Powered b true" "$ADAPTER_LOG" || fail "power on targets the device's adapter"
 pass "a powered-down secondary adapter is powered on explicitly"
 
+: >"$ADAPTER_LOG"
+ADAPTER_POWERED=false "$ROOT/bin/omarchy-bluetooth-device" forget AA:BB:CC:DD:EE:FF "$device"
+{
+  echo "--system --timeout=2 get-property org.bluez /org/bluez/hci1 org.bluez.Adapter1 Powered"
+  echo "power on"
+  echo "--system set-property org.bluez /org/bluez/hci1 org.bluez.Adapter1 Powered b true"
+  echo "--system --timeout=20 call org.bluez /org/bluez/hci1 org.bluez.Adapter1 RemoveDevice o $device"
+} >"$scratch/expected"
+diff -u "$scratch/expected" "$ADAPTER_LOG" || fail "forget powers its adapter before removing the device"
+pass "forget powers a powered-down adapter before removing the device"
+
 # The general helper may fail after trying the default controller. Pair and
 # connect must still try the selected controller, but must not ignore its error.
 for action in pair connect; do
