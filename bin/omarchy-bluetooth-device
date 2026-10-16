@@ -33,10 +33,16 @@ trust_device() {
 # The panel has an adapter-qualified BlueZ object. Address-only bluetoothctl
 # commands use its default controller, which may not own the clicked device.
 if [[ -n $device_path ]]; then
-  # Not matched against the address: BlueZ keeps the path when an LE device's
-  # address resolves to its identity address after pairing.
   [[ $device_path =~ ^/org/bluez/hci[0-9]+/dev_([0-9A-F]{2}_){5}[0-9A-F]{2}$ ]] || usage
   adapter_path=${device_path%/dev_*}
+
+  # Checked against the live Address, not the path: BlueZ keeps the path when
+  # an LE device's address resolves to its identity address after pairing.
+  current_address=$(busctl --system --timeout=2 get-property org.bluez "$device_path" org.bluez.Device1 Address)
+  if [[ ${current_address^^} != "S \"${address^^}\"" ]]; then
+    echo "$device_path is not the device $address" >&2
+    exit 1
+  fi
 
   device_call() {
     busctl --system --timeout=20 call org.bluez "$device_path" org.bluez.Device1 "$1"

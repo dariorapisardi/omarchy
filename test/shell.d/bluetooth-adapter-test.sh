@@ -53,7 +53,9 @@ printf '%s\n' "$*" >>"$ADAPTER_LOG"
 if [[ -n ${ADAPTER_POWER_FAIL:-} && $* == *"set-property"*"Powered b true" ]]; then
   exit 1
 fi
-if [[ $* == *"get-property"* ]]; then
+if [[ $* == *"get-property"*"Device1 Address" ]]; then
+  printf 's "%s"\n' "${DEVICE_ADDRESS:-AA:BB:CC:DD:EE:FF}"
+elif [[ $* == *"get-property"* ]]; then
   printf 'b %s\n' "${ADAPTER_POWERED:-true}"
 fi
 MOCK
@@ -103,6 +105,7 @@ pass "a powered-down secondary adapter is powered on explicitly"
 : >"$ADAPTER_LOG"
 ADAPTER_POWERED=false "$ROOT/bin/omarchy-bluetooth-device" forget AA:BB:CC:DD:EE:FF "$device"
 {
+  echo "--system --timeout=2 get-property org.bluez $device org.bluez.Device1 Address"
   echo "--system --timeout=2 get-property org.bluez /org/bluez/hci1 org.bluez.Adapter1 Powered"
   echo "power on"
   echo "--system set-property org.bluez /org/bluez/hci1 org.bluez.Adapter1 Powered b true"
@@ -118,6 +121,7 @@ for action in pair connect; do
   ADAPTER_POWERED=false POWER_HELPER_EXIT=1 "$ROOT/bin/omarchy-bluetooth-device" "$action" AA:BB:CC:DD:EE:FF "$device" ||
     fail "$action attempts the selected adapter after the general power helper fails"
   {
+    echo "--system --timeout=2 get-property org.bluez $device org.bluez.Device1 Address"
     echo "--system --timeout=2 get-property org.bluez /org/bluez/hci1 org.bluez.Adapter1 Powered"
     echo "power on"
     echo "--system set-property org.bluez /org/bluez/hci1 org.bluez.Adapter1 Powered b true"
@@ -134,7 +138,7 @@ for action in pair connect; do
   if ADAPTER_POWERED=false POWER_HELPER_EXIT=1 ADAPTER_POWER_FAIL=1 "$ROOT/bin/omarchy-bluetooth-device" "$action" AA:BB:CC:DD:EE:FF "$device"; then
     fail "$action reports a selected-adapter power failure"
   fi
-  head -n 3 "$scratch/expected" >"$scratch/failed-power-expected"
+  head -n 4 "$scratch/expected" >"$scratch/failed-power-expected"
   diff -u "$scratch/failed-power-expected" "$ADAPTER_LOG" || fail "$action stops before device operations when selected-adapter power fails"
   pass "$action preserves selected-adapter power errors"
 done
@@ -151,11 +155,21 @@ pass "invalid paths never reach Bluetooth"
 # An LE device paired under a private address keeps its object path after its
 # Address property resolves to the identity address.
 : >"$ADAPTER_LOG"
-"$ROOT/bin/omarchy-bluetooth-device" disconnect 11:22:33:44:55:66 "$device" ||
+DEVICE_ADDRESS=11:22:33:44:55:66 "$ROOT/bin/omarchy-bluetooth-device" disconnect 11:22:33:44:55:66 "$device" ||
   fail "a device whose address changed since its path was created can still be controlled"
 grep -Fxq -- "--system --timeout=20 call org.bluez $device org.bluez.Device1 Disconnect" "$ADAPTER_LOG" ||
   fail "a resolved LE address targets the device's own path"
 pass "a device whose address resolved after pairing is still controlled through its path"
+
+for action in pair connect disconnect forget; do
+  : >"$ADAPTER_LOG"
+  if DEVICE_ADDRESS=11:22:33:44:55:66 "$ROOT/bin/omarchy-bluetooth-device" "$action" AA:BB:CC:DD:EE:FF "$device" 2>/dev/null; then
+    fail "$action rejects a path belonging to another device"
+  fi
+  [[ $(<"$ADAPTER_LOG") == "--system --timeout=2 get-property org.bluez $device org.bluez.Device1 Address" ]] ||
+    fail "$action never acts on a path belonging to another device"
+done
+pass "a path belonging to another device is never acted on"
 
 : >"$ADAPTER_LOG"
 if BUSCTL_FAIL=1 "$ROOT/bin/omarchy-bluetooth-device" connect AA:BB:CC:DD:EE:FF "$device"; then
